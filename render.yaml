@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: delegram-clients
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production

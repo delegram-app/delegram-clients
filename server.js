@@ -349,11 +349,8 @@ async function migrate() {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-migrate()
-  .then(() => {
-    app.listen(PORT, () => console.log(`Delegram client server running on port ${PORT}`))
-  })
-  .catch(err => {
-    console.error('Migration failed:', err)
-    process.exit(1)
-  })
+// Start server immediately, migrate in background
+app.listen(PORT, () => {
+  console.log(`Delegram client server running on port ${PORT}`)
+  migrate().catch(err => console.error('Migration error (non-fatal):', err.message))
+})
