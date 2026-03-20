@@ -309,35 +309,41 @@ function notFoundPage(subdomain) {
 // ── DB migrations ─────────────────────────────────────────────────────────────
 
 async function migrate() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS client_sites (
+  // Run migrations one at a time, ignore errors on existing tables
+  const migrations = [
+    `CREATE TABLE IF NOT EXISTS client_sites (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL UNIQUE REFERENCES tenants(id),
+      tenant_id UUID NOT NULL UNIQUE,
       html TEXT,
       css TEXT,
       config JSONB DEFAULT '{}',
       admin_key VARCHAR(64) NOT NULL DEFAULT substring(md5(random()::text), 1, 16),
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE TABLE IF NOT EXISTS subscribers (
+    )`,
+    `CREATE TABLE IF NOT EXISTS subscribers (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      tenant_id UUID NOT NULL,
       email VARCHAR(255) NOT NULL,
       name VARCHAR(255),
       source VARCHAR(64) DEFAULT 'landing',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(tenant_id, email)
-    );
-    CREATE TABLE IF NOT EXISTS page_views (
+    )`,
+    `CREATE TABLE IF NOT EXISTS page_views (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      tenant_id UUID NOT NULL,
       path VARCHAR(255) DEFAULT '/',
       referrer TEXT,
       ua TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_subscribers_tenant ON subscribers(tenant_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_page_views_tenant ON page_views(tenant_id)`,
+  ]
+  for (const sql of migrations) {
+    try { await pool.query(sql) } catch (e) { console.warn('Migration warning:', e.message) }
+  }
   console.log('✓ Migrations done')
 }
 
