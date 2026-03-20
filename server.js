@@ -22,7 +22,7 @@ const pool = new Pool({
 
 // ── Subdomain middleware ──────────────────────────────────────────────────────
 
-async function getClient(subdomain) {
+async function getClient(subdomain, req) {
   if (!subdomain || subdomain === 'www') return null
   const result = await pool.query(
     `SELECT t.id, t.company_name, t.subdomain, t.status,
@@ -36,13 +36,17 @@ async function getClient(subdomain) {
   return result.rows[0] || null
 }
 
-function extractSubdomain(host) {
+function extractSubdomain(host, req) {
+  // Check X-Client-Subdomain header first (set by Cloudflare Worker)
+  if (req && req.headers['x-client-subdomain']) {
+    return req.headers['x-client-subdomain']
+  }
   if (!host) return null
   const parts = host.split('.')
   if (parts.length < 2) return null
-  // Handle: subdomain.delegram.app → subdomain
-  // Handle: subdomain.delegram.app:3000 → subdomain
   const first = parts[0].split(':')[0]
+  // Don't use the Render hostname itself as subdomain
+  if (first === 'delegram-clients') return null
   return first
 }
 
@@ -53,14 +57,14 @@ app.use(express.urlencoded({ extended: true }))
 
 // Health check (no subdomain required)
 app.get('/health', (req, res) => {
-  const subdomain = extractSubdomain(req.hostname)
+  const subdomain = extractSubdomain(req.hostname, req)
   res.json({ ok: true, company: subdomain || 'delegram-clients' })
 })
 
 // Main site — serve client HTML
 app.get('/', async (req, res) => {
-  const subdomain = extractSubdomain(req.hostname)
-  const client = await getClient(subdomain)
+  const subdomain = extractSubdomain(req.hostname, req)
+  const client = await getClient(subdomain, req)
 
   if (!client) {
     return res.status(404).send(notFoundPage(subdomain))
@@ -78,8 +82,8 @@ app.get('/', async (req, res) => {
 
 // Email subscribe
 app.post('/subscribe', async (req, res) => {
-  const subdomain = extractSubdomain(req.hostname)
-  const client = await getClient(subdomain)
+  const subdomain = extractSubdomain(req.hostname, req)
+  const client = await getClient(subdomain, req)
   if (!client) return res.status(404).json({ error: 'Not found' })
 
   const { email, name } = req.body
@@ -103,8 +107,8 @@ app.post('/subscribe', async (req, res) => {
 
 // Analytics ping
 app.post('/ping', async (req, res) => {
-  const subdomain = extractSubdomain(req.hostname)
-  const client = await getClient(subdomain)
+  const subdomain = extractSubdomain(req.hostname, req)
+  const client = await getClient(subdomain, req)
   if (!client) return res.status(404).json({ error: 'Not found' })
 
   try {
@@ -119,16 +123,16 @@ app.post('/ping', async (req, res) => {
 
 // Admin dashboard
 app.get('/admin.html', async (req, res) => {
-  const subdomain = extractSubdomain(req.hostname)
-  const client = await getClient(subdomain)
+  const subdomain = extractSubdomain(req.hostname, req)
+  const client = await getClient(subdomain, req)
   if (!client) return res.status(404).send(notFoundPage(subdomain))
   res.send(renderAdminPage(client))
 })
 
 // Admin API — stats
 app.get('/api/admin/stats', async (req, res) => {
-  const subdomain = extractSubdomain(req.hostname)
-  const client = await getClient(subdomain)
+  const subdomain = extractSubdomain(req.hostname, req)
+  const client = await getClient(subdomain, req)
   if (!client) return res.status(404).json({ error: 'Not found' })
 
   const key = req.headers['x-admin-key'] || req.query.key
@@ -149,8 +153,8 @@ app.get('/api/admin/stats', async (req, res) => {
 
 // Admin API — subscribers list
 app.get('/api/admin/subscribers', async (req, res) => {
-  const subdomain = extractSubdomain(req.hostname)
-  const client = await getClient(subdomain)
+  const subdomain = extractSubdomain(req.hostname, req)
+  const client = await getClient(subdomain, req)
   if (!client) return res.status(404).json({ error: 'Not found' })
 
   const key = req.headers['x-admin-key'] || req.query.key
